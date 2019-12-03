@@ -12,13 +12,52 @@ func Emit(log *zap.Logger, m interface{}) {
 	if e, ok := m.(Event); ok {
 		e.Emit(log)
 	} else {
-		// FIXME Replace sugared logger with regular
-		emit(log.Sugar(), m)
+		emit(log, m)
 	}
 }
 
 type Event interface {
 	Emit(*zap.Logger)
+}
+
+func Name(m interface{}) string {
+	_, _, _, name := prepare1(m)
+	return name
+}
+
+func prepare1(m interface{}) (rt reflect.Type, rv reflect.Value, typeName, name string) {
+	rv = reflect.ValueOf(m)
+	for rv.Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	rt = rv.Type()
+
+	typeName = rt.Name()
+
+	name = fmt.Sprintf("%s!%s", rt.PkgPath(), typeName)
+
+	return rt, rv, typeName, name
+}
+
+func prepare2(m interface{}) (typeName, name string, fields []zap.Field) {
+	rt, rv, typeName, name := prepare1(m)
+
+	fields = make([]zap.Field, rt.NumField())
+	for i := 0; i < rv.NumField(); i++ {
+		sf := rt.Field(i)
+		fv := rv.Field(i)
+
+		var v interface{}
+		if fv.CanInterface() {
+			v = fv.Interface()
+		} else {
+			v = nil
+		}
+
+		fields[i] = zap.Any(sf.Name, v)
+	}
+
+	return typeName, name, fields
 }
 
 type level string
@@ -31,50 +70,25 @@ const (
 	levelPanic level = "Panic"
 )
 
-func emit(logger *zap.SugaredLogger, m interface{}) {
-	rv := reflect.ValueOf(m)
-	for rv.Kind() == reflect.Ptr {
-		rv = rv.Elem()
-	}
-	rt := rv.Type()
+func emit(logger *zap.Logger, m interface{}) {
+	typeName, name, fields := prepare2(m)
 
-	var fields = make([]interface{}, rt.NumField()*2)
-	for i := 0; i < rv.NumField(); i++ {
-		sf := rt.Field(i)
-		fv := rv.Field(i)
-
-		fields[i*2] = sf.Name
-		var v interface{}
-		if fv.CanInterface() {
-			v = fv.Interface()
-		} else {
-			v = nil
-		}
-		fields[i*2+1] = v
-	}
-
-	typeName := rt.Name()
-
-	name := fmt.Sprintf("%s!%s", rt.PkgPath(), typeName)
-
-	emit := logger.Panicw
+	emit := logger.Panic
 
 	switch {
 	case strings.HasPrefix(typeName, string(levelDebug)):
-		emit = logger.Debugw
+		emit = logger.Debug
 	case strings.HasPrefix(typeName, string(levelInfo)):
-		emit = logger.Infow
+		emit = logger.Info
 	case strings.HasPrefix(typeName, string(levelWarn)):
-		emit = logger.Warnw
+		emit = logger.Warn
 	case strings.HasPrefix(typeName, string(levelError)):
-		emit = logger.Errorw
+		emit = logger.Error
 	case strings.HasPrefix(typeName, string(levelPanic)):
-		emit = logger.Panicw
+		emit = logger.Panic
 	default:
 		panic(fmt.Sprintf("could not determine event level: %s", typeName))
 	}
 
 	emit(name, fields...)
-
-	return
 }
