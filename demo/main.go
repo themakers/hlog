@@ -3,21 +3,23 @@ package main
 import (
 	"math/rand"
 
-	"github.com/themakers/log"
-	"github.com/themakers/log/demo/events"
+	"github.com/themakers/hlog"
+	"github.com/themakers/hlog/demo/events"
 	"go.uber.org/zap"
 )
 
 func main() {
-	logger, err := zap.NewProduction()
+	zlog, err := zap.NewProduction()
 	if err != nil {
 		panic(err)
 	}
 
 	//> You must add 2 to callerSkip to see correct caller info
-	logger = logger.WithOptions(zap.AddCallerSkip(2))
+	zlog = zlog.WithOptions(zap.AddCallerSkip(2))
 
-	log.Emit(logger, events.WarnSampleEvent{
+	hlog := hlog.New(zlog)
+
+	hlog.Emit(events.WarnSampleEvent{
 		Field1: rand.Int(),
 		Field2: "value",
 	})

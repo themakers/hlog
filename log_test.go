@@ -1,11 +1,12 @@
-package log
+package hlog
 
 import (
-	"github.com/themakers/log/demo/events"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"io/ioutil"
 	"testing"
+
+	"github.com/themakers/hlog/demo/events"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 //> Run with `go test -v -benchmem -bench=. .`
@@ -23,12 +24,12 @@ func newLogger() *zap.Logger {
 }
 
 func BenchmarkEmit(b *testing.B) {
-	logger := newLogger()
+	logger := New(newLogger())
 
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		Emit(logger, events.WarnSampleEvent{
+		logger.Emit(events.WarnSampleEvent{
 			Field1: 10000000,
 			Field2: "value",
 		})

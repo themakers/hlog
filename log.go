@@ -1,4 +1,4 @@
-package log
+package hlog
 
 import (
 	"fmt"
@@ -8,15 +8,75 @@ import (
 	"go.uber.org/zap"
 )
 
-func Emit(log *zap.Logger, m interface{}) {
-	if e, ok := m.(Event); ok {
-		e.Emit(log)
-	} else {
-		emit(log, m)
+type Logger interface {
+	Emit(m interface{})
+	With(m interface{}) Logger
+	Module(name string) Logger
+}
+
+var _ Logger = new(logger)
+
+type logger struct {
+	log *zap.Logger
+}
+
+func New(log *zap.Logger) Logger {
+	return &logger{
+		log: log,
 	}
 }
 
-type Event interface {
+func (l *logger) Emit(m interface{}) {
+	if e, ok := m.(Emitter); ok {
+		e.Emit(l.log)
+	} else {
+		l.emit(m)
+	}
+}
+
+func (l *logger) emit(m interface{}) {
+	type level string
+
+	const (
+		levelDebug level = "Debug"
+		levelInfo  level = "Info"
+		levelWarn  level = "Warn"
+		levelError level = "Error"
+		levelPanic level = "Panic"
+	)
+
+	typeName, name, fields := prepare2(m)
+
+	emit := l.log.Panic
+
+	switch {
+	case strings.HasPrefix(typeName, string(levelDebug)):
+		emit = l.log.Debug
+	case strings.HasPrefix(typeName, string(levelInfo)):
+		emit = l.log.Info
+	case strings.HasPrefix(typeName, string(levelWarn)):
+		emit = l.log.Warn
+	case strings.HasPrefix(typeName, string(levelError)):
+		emit = l.log.Error
+	case strings.HasPrefix(typeName, string(levelPanic)):
+		emit = l.log.Panic
+	default:
+		panic(fmt.Sprintf("could not determine event level: %s", typeName))
+	}
+
+	emit(name, fields...)
+}
+
+func (l *logger) With(m interface{}) Logger {
+	_, _, fields := prepare2(m)
+	return New(l.log.With(fields...))
+}
+
+func (l *logger) Module(name string) Logger {
+	return New(l.log.Named(name))
+}
+
+type Emitter interface {
 	Emit(*zap.Logger)
 }
 
@@ -58,37 +118,4 @@ func prepare2(m interface{}) (typeName, name string, fields []zap.Field) {
 	}
 
 	return typeName, name, fields
-}
-
-type level string
-
-const (
-	levelDebug level = "Debug"
-	levelInfo  level = "Info"
-	levelWarn  level = "Warn"
-	levelError level = "Error"
-	levelPanic level = "Panic"
-)
-
-func emit(logger *zap.Logger, m interface{}) {
-	typeName, name, fields := prepare2(m)
-
-	emit := logger.Panic
-
-	switch {
-	case strings.HasPrefix(typeName, string(levelDebug)):
-		emit = logger.Debug
-	case strings.HasPrefix(typeName, string(levelInfo)):
-		emit = logger.Info
-	case strings.HasPrefix(typeName, string(levelWarn)):
-		emit = logger.Warn
-	case strings.HasPrefix(typeName, string(levelError)):
-		emit = logger.Error
-	case strings.HasPrefix(typeName, string(levelPanic)):
-		emit = logger.Panic
-	default:
-		panic(fmt.Sprintf("could not determine event level: %s", typeName))
-	}
-
-	emit(name, fields...)
 }

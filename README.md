@@ -1,1 +1,1 @@
-# log
+### Hardened Structured Logging
